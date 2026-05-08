@@ -219,8 +219,8 @@ export function Today() {
              <p className="font-sans text-sm mt-2 opacity-70">No mandated lifts today. Rebuild.</p>
           </div>
         ) : (
-          loggedWorkout?.exercises.map((logEx, exIndex) => {
-            const staticEx = workout.exercises[exIndex];
+          (loggedWorkout?.exercises || []).map((logEx, exIndex) => {
+            const staticEx = workout.exercises[exIndex] || { name: logEx.name || "Unknown", notes: "", reps: 0 };
             const allCompleted = logEx.sets.length > 0 && logEx.sets.every(s => s.completed);
             
             return (
@@ -245,7 +245,7 @@ export function Today() {
                     <div>Reps</div>
                     <div className="text-right">Done</div>
                   </div>
-                  {logEx.sets.map((set, setIndex) => (
+                  {logEx.sets && logEx.sets.map((set, setIndex) => (
                     <motion.div 
                       key={setIndex}
                       initial={false}
