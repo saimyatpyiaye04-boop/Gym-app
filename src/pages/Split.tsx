@@ -38,6 +38,16 @@ export function Split() {
                 <span className="font-sans text-sm font-bold uppercase">{day.focus}</span>
                 <span className="text-[10px] font-mono opacity-60 uppercase">{day.exercises.length} Movements</span>
               </div>
+              {day.exercises.length > 0 && (
+                <div className="mt-4 border-t-2 border-dashed border-black/20 pt-4 space-y-2">
+                  {day.exercises.map((ex, idx) => (
+                    <div key={idx} className="flex justify-between items-start text-xs font-mono">
+                      <span className="uppercase pr-4">{ex.name}</span>
+                      <span className="opacity-70 whitespace-nowrap">{ex.sets} × {ex.reps}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}

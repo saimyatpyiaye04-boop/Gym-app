@@ -34,4 +34,5 @@ export interface LoggedWorkout {
   focus: string;
   date: number;
   exercises: LoggedExercise[];
+  isCompleted?: boolean;
 }
