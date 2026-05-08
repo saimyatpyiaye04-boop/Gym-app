@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} { 
+      allow read, write: if false; 
+    }
+
+    function isSignedIn() { return request.auth != null; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+
+    function isValidWorkout(data) {
+      return data.keys().hasAll(['day_number', 'workout_type', 'focus', 'date', 'exercises'])
+        && data.day_number is number
+        && data.workout_type is string
+        && data.focus is string
+        && data.date is number
+        && data.exercises is list
+        && data.exercises.size() <= 20; // Bound the list size to prevent abuse
+    }
+
+    match /users/{userId}/workouts/{workoutId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+                    && isValidId(workoutId)
+                    && isValidWorkout(incoming())
+                    && incoming().keys().size() == 5;
+      allow update: if isOwner(userId)
+                    && isValidId(workoutId)
+                    && isValidWorkout(incoming())
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['exercises', 'date']);
+      allow delete: if isOwner(userId);
+    }
+  }
+}

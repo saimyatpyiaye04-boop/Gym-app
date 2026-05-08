@@ -1,0 +1,35 @@
+{
+  "entities": {
+    "Workout": {
+      "title": "Workout",
+      "description": "A completed or in-progress workout session",
+      "type": "object",
+      "properties": {
+        "day_number": { "type": "number" },
+        "workout_type": { "type": "string" },
+        "focus": { "type": "string" },
+        "date": { "type": "number", "description": "Timestamp" },
+        "exercises": { 
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "sets": { 
+                "type": "array",
+                "items": { "type": "object", "properties": { "reps": { "type": "number" }, "weight": { "type": "number" }, "completed": { "type": "boolean" } } }
+              }
+            }
+          }
+        }
+      },
+      "required": ["day_number", "workout_type", "focus", "date", "exercises"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/workouts/{workoutId}": {
+      "schema": "Workout",
+      "description": "User's individual workout sessions"
+    }
+  }
+}
