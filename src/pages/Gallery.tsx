@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { X, Play } from "lucide-react";
 import { Exercise } from "../types";
 
+import { extraExercises } from "../data/extraExercises";
+
 const VIDEO_MAP: Record<string, string> = {
   "Flat Dumbbell Press": "o7TvO377OqA",
   "Incline Dumbbell Press": "0G2_XV7slIg",
@@ -23,18 +25,39 @@ const VIDEO_MAP: Record<string, string> = {
   "Lying Hamstring Curls": "d6sg829PgNs",
   "Standing Calf Raises": "-M4-G8p8fmc",
   "Seated DB Shoulder Press": "qEwKCR5JCog",
-  "Incline DB Press": "0G2_XV7slIg",
   "Seated Cable Rows": "GZbfZ033f74",
   "Preacher Curls": "fIWP-FRFNU0",
   "Romanian Deadlifts": "JCXUYuzwNrM",
   "Seated Hamstring Curls": "F488k67BTNo",
   "Walking Lunges": "D7KaRcUTQeE",
-  "Seated Calf Raises": "JbyjNymZOt0"
+  "Seated Calf Raises": "JbyjNymZOt0",
+  // Additional videos for extra exercises
+  "Barbell Squat": "bEv6CCg2BC8",
+  "Barbell Bench Press": "rT7DgCr-3pg",
+  "Conventional Deadlift": "op9kVnSso6Q",
+  "Overhead Press": "zoN5EH50Dro",
+  "Barbell Row": "G8l_8chR5BE",
+  "Pull-Ups": "ym1V5H35IpA",
+  "Dips": "2z8JmcrW-As",
+  "Front Squat": "nmUof3vszxM",
+  "Hip Thrust": "SEdqd1n0cvg",
+  "Bicep Curls": "ykJmrZ5v0Oo",
+  "Tricep Extensions": "nRiJVZDpdL0",
+  "Lat Pulldown": "CAwf7n6Luuc",
+  "Leg Press": "K5n2vg3oZa4",
+  "Goblet Squat": "lRYBbchqxtI",
+  "Kettlebell Swing": "YSxHifyI6s8",
+  "Plank": "ASdvN_XEl_c",
+  "Ab Rollout": "MinlHnG7j4k",
+  "Pec Deck Fly": "g3T7LsEeDWQ",
+  "Cable Crossover": "taI4XduLpTk",
+  "Face Pulls": "IeOqdw9WI90",
+  "Lateral Raises": "JMt_uxE8bBc"
 };
 
 export function Gallery() {
   const allExercises = Array.from(new Map(
-    routineData.routine.flatMap(day => day.exercises).map(ex => [ex.name, ex])
+    [...routineData.routine.flatMap(day => day.exercises), ...extraExercises].map(ex => [ex.name, ex])
   ).values()).sort((a, b) => a.name.localeCompare(b.name));
 
   const [selectedEx, setSelectedEx] = useState<Exercise | null>(null);

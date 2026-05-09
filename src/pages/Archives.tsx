@@ -1,15 +1,57 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { auth, db } from "../services/firebase";
-import { collection, query, orderBy, getDocs } from "firebase/firestore";
+import { collection, query, orderBy, getDocs, doc, updateDoc } from "firebase/firestore";
 import { LoggedWorkout } from "../types";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Check, X, Edit2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../components/AppShell";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine } from "recharts";
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: any;
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export function Archives() {
   const [history, setHistory] = useState<LoggedWorkout[]>([]);
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [selectedLift, setSelectedLift] = useState<string | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editType, setEditType] = useState("");
+  const [editFocus, setEditFocus] = useState("");
 
   useEffect(() => {
     async function fetchHistory() {
@@ -23,6 +65,7 @@ export function Archives() {
         setHistory(snaps.docs.map(d => ({ id: d.id, ...d.data() } as LoggedWorkout)));
       } catch (error) {
         console.error("Failed to load history", error);
+        handleFirestoreError(error, OperationType.LIST, `users/${auth.currentUser.uid}/workouts`);
       }
     }
     fetchHistory();
@@ -35,6 +78,23 @@ export function Archives() {
       else next.add(id);
       return next;
     });
+  };
+
+  const handleUpdate = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!auth.currentUser) return;
+    const path = `users/${auth.currentUser.uid}/workouts`;
+    try {
+      await updateDoc(doc(db, path, id), {
+        workout_type: editType,
+        focus: editFocus
+      });
+      setHistory(prev => prev.map(w => w.id === id ? { ...w, workout_type: editType, focus: editFocus } : w));
+      setEditingId(null);
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
   };
 
   // Compute top exercises
@@ -54,8 +114,12 @@ export function Archives() {
     .slice(0, 3);
 
   const activeLift = selectedLift || topExercises[0] || "Flat Dumbbell Press";
-  let maxWeightOverTime: number[] = [];
   
+  const chartData: { date: string, weight: number, reps: number }[] = [];
+  
+  let prWeight = 0;
+  let prReps = 0;
+
   // To chart properly from oldest to newest:
   const chronoHistory = [...history].reverse();
   chronoHistory.forEach(workout => {
@@ -63,24 +127,21 @@ export function Archives() {
     if (ex) {
        const completedSets = ex.sets.filter(s => s.completed);
        if (completedSets.length > 0) {
-         const maxW = Math.max(...completedSets.map(s => s.weight || 0));
-         if (maxW > 0) maxWeightOverTime.push(maxW);
+         const bestSet = completedSets.reduce((prev, curr) => (curr.weight > prev.weight ? curr : prev));
+         if (bestSet.weight > 0) {
+           if (bestSet.weight > prWeight) {
+             prWeight = bestSet.weight;
+             prReps = bestSet.reps;
+           }
+           chartData.push({
+             date: new Date(workout.date).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+             weight: bestSet.weight,
+             reps: bestSet.reps
+           });
+         }
        }
     }
   });
-
-  // Chart scaling
-  const chartHeight = 150;
-  const chartWidth = 300;
-  const maxW = Math.max(...maxWeightOverTime, 20);
-  const minW = Math.min(...maxWeightOverTime.filter(w => w > 0), maxW - 20);
-  const range = maxW - minW === 0 ? 1 : maxW - minW;
-
-  const points = maxWeightOverTime.map((val, i) => {
-    const x = maxWeightOverTime.length > 1 ? (i / (maxWeightOverTime.length - 1)) * chartWidth : chartWidth / 2;
-    const y = chartHeight - ((val - minW) / range) * (chartHeight - 40) - 20; // 20px padding top/bottom
-    return `${x},${y}`;
-  }).join(" ");
 
   return (
     <div className="p-6 space-y-10">
@@ -93,7 +154,7 @@ export function Archives() {
         </p>
       </section>
 
-      {/* SVG Chart */}
+      {/* Recharts Chart */}
       <section className="bg-white border-[4px] border-black p-6 space-y-4">
          <div>
             <h3 className="font-serif text-2xl font-black uppercase">Strength Velocity</h3>
@@ -101,7 +162,7 @@ export function Archives() {
          </div>
 
          {topExercises.length > 0 && (
-           <div className="flex flex-wrap gap-2">
+           <div className="flex flex-wrap gap-2 mb-4">
              {topExercises.map(lift => (
                <button
                  key={lift}
@@ -117,33 +178,59 @@ export function Archives() {
            </div>
          )}
          
-         <div className="w-full overflow-x-auto pb-4">
-           {maxWeightOverTime.length >= 2 ? (
-              <svg width={chartWidth} height={chartHeight} className="overflow-visible stroke-black">
-                <polyline 
-                  points={points} 
-                  fill="none" 
-                  strokeWidth="4" 
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
-                {maxWeightOverTime.map((val, i) => {
-                  const x = (i / (maxWeightOverTime.length - 1)) * chartWidth;
-                  const y = chartHeight - ((val - minW) / range) * (chartHeight - 40) - 20;
-                  return (
-                    <g key={i}>
-                      <circle cx={x} cy={y} r="4" fill="#F2F2F2" strokeWidth="4" className="stroke-black" />
-                      {i === maxWeightOverTime.length - 1 && (
-                        <text x={x} y={y - 12} fontSize="10" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                          {val}KG
-                        </text>
-                      )}
-                    </g>
-                  );
-                })}
-              </svg>
+         <div className="w-full h-[250px] pb-4">
+           {chartData.length >= 2 ? (
+             <ResponsiveContainer width="100%" height="100%">
+               <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                 <XAxis 
+                   dataKey="date" 
+                   tick={{ fontSize: 10, fontFamily: 'monospace' }} 
+                   stroke="#000" 
+                   tickMargin={10} 
+                   axisLine={false}
+                   tickLine={false}
+                 />
+                 <YAxis 
+                   tick={{ fontSize: 10, fontFamily: 'monospace' }} 
+                   stroke="#000" 
+                   axisLine={false}
+                   tickLine={false}
+                 />
+                 <Tooltip 
+                   contentStyle={{ backgroundColor: '#fff', border: '4px solid #000', borderRadius: '0', fontFamily: 'monospace', fontSize: '12px' }}
+                   itemStyle={{ color: '#000', fontWeight: 'bold' }}
+                   formatter={(value: number, name: string, props: any) => [`${value} kg × ${props.payload.reps}`, 'Max']}
+                   labelStyle={{ display: 'none' }}
+                   cursor={{ stroke: '#000', strokeWidth: 1, strokeDasharray: '4 4' }}
+                 />
+                 {prWeight > 0 && (
+                   <ReferenceLine 
+                     y={prWeight} 
+                     stroke="#000" 
+                     strokeDasharray="4 4" 
+                     label={{ 
+                       position: 'top', 
+                       value: `PR: ${prWeight}KG × ${prReps}`, 
+                       fill: '#000', 
+                       fontSize: 10, 
+                       fontFamily: 'monospace', 
+                       fontWeight: 'bold' 
+                     }} 
+                   />
+                 )}
+                 <Line 
+                   type="monotone" 
+                   dataKey="weight" 
+                   stroke="#000" 
+                   strokeWidth={4} 
+                   dot={{ r: 4, strokeWidth: 4, fill: '#fff', stroke: '#000' }} 
+                   activeDot={{ r: 6, fill: '#000', stroke: '#000' }} 
+                 />
+               </LineChart>
+             </ResponsiveContainer>
            ) : (
-             <div className="h-[150px] flex items-center justify-center font-mono text-sm opacity-50 uppercase border-2 border-dashed border-black/20">
+             <div className="h-full flex items-center justify-center font-mono text-sm opacity-50 uppercase border-2 border-dashed border-black/20">
                Insufficient Data
              </div>
            )}
@@ -163,12 +250,46 @@ export function Archives() {
                   onClick={() => toggleAccordion(workout.id!)}
                   className="w-full flex justify-between items-center p-4 hover:bg-[#F2F2F2] transition-colors"
                 >
-                  <div className="text-left flex flex-col">
+                  <div className="text-left flex flex-col w-full pr-4">
                     <span className="font-sans font-bold uppercase">{new Date(workout.date).toLocaleDateString()}</span>
-                    <span className="font-serif text-lg leading-none mt-1">{workout.workout_type} - {workout.focus}</span>
+                    {editingId === workout.id ? (
+                      <div className="flex flex-col sm:flex-row gap-2 mt-2 w-full" onClick={e => e.stopPropagation()}>
+                        <input 
+                          value={editType} 
+                          onChange={e => setEditType(e.target.value)} 
+                          className="font-serif text-lg leading-none border-b-2 border-black outline-none bg-transparent flex-1"
+                          placeholder="Type"
+                        />
+                        <input 
+                          value={editFocus} 
+                          onChange={e => setEditFocus(e.target.value)} 
+                          className="font-serif text-lg leading-none border-b-2 border-black outline-none bg-transparent flex-1"
+                          placeholder="Focus"
+                        />
+                        <div className="flex gap-2 shrink-0">
+                          <button onClick={(e) => handleUpdate(workout.id!, e)} className="bg-black text-white p-1 hover:opacity-80 transition-opacity"><Check className="w-5 h-5" /></button>
+                          <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="bg-black text-white p-1 hover:opacity-80 transition-opacity"><X className="w-5 h-5" /></button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 group mt-1">
+                        <span className="font-serif text-lg leading-none">{workout.workout_type} - {workout.focus}</span>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingId(workout.id!);
+                            setEditType(workout.workout_type);
+                            setEditFocus(workout.focus);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-black/5 transition-opacity"
+                        >
+                          <Edit2 className="w-4 h-4 opacity-50" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <ChevronDown className={cn(
-                    "w-6 h-6 transition-transform duration-300",
+                    "w-6 h-6 transition-transform duration-300 shrink-0",
                     openIds.has(workout.id!) ? "rotate-180" : ""
                   )} />
                 </button>

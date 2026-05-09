@@ -24,12 +24,25 @@
         }
       },
       "required": ["day_number", "workout_type", "focus", "date", "exercises"]
+    },
+    "CustomExercise": {
+      "title": "Custom Exercise",
+      "description": "User's custom exercise definition",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" }
+      },
+      "required": ["name"]
     }
   },
   "firestore": {
     "/users/{userId}/workouts/{workoutId}": {
       "schema": "Workout",
       "description": "User's individual workout sessions"
+    },
+    "/users/{userId}/custom_exercises/{exerciseId}": {
+      "schema": "CustomExercise",
+      "description": "User's custom created exercises"
     }
   }
 }

@@ -18,7 +18,15 @@ service cloud.firestore {
         && data.focus is string
         && data.date is number
         && data.exercises is list
-        && data.exercises.size() <= 20; // Bound the list size to prevent abuse
+        && data.exercises.size() <= 20 // Bound the list size to prevent abuse
+        && (!('isCompleted' in data) || data.isCompleted is bool);
+    }
+
+    function isValidCustomExercise(data) {
+      return data.keys().hasAll(['name'])
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 100;
     }
 
     match /users/{userId}/workouts/{workoutId} {
@@ -26,11 +34,24 @@ service cloud.firestore {
       allow create: if isOwner(userId)
                     && isValidId(workoutId)
                     && isValidWorkout(incoming())
-                    && incoming().keys().size() == 5;
+                    && (incoming().keys().size() == 5 || (incoming().keys().size() == 6 && 'isCompleted' in incoming()));
       allow update: if isOwner(userId)
                     && isValidId(workoutId)
                     && isValidWorkout(incoming())
-                    && incoming().diff(existing()).affectedKeys().hasOnly(['exercises', 'date']);
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['day_number', 'workout_type', 'focus', 'date', 'exercises', 'isCompleted']);
+      allow delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/custom_exercises/{exerciseId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+                    && isValidId(exerciseId)
+                    && isValidCustomExercise(incoming())
+                    && incoming().keys().size() == 1;
+      allow update: if isOwner(userId)
+                    && isValidId(exerciseId)
+                    && isValidCustomExercise(incoming())
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['name']);
       allow delete: if isOwner(userId);
     }
   }
