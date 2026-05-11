@@ -49,6 +49,7 @@ export function Today() {
   const [selectedDayNumber, setSelectedDayNumber] = useState(todayDefaultDayNumber);
   const [previousStats, setPreviousStats] = useState<Record<string, { weight: number, reps: number }>>({});
   const [swappingExIndex, setSwappingExIndex] = useState<number | null>(null);
+  const [isAddingNewExercise, setIsAddingNewExercise] = useState(false);
   const [swapSearch, setSwapSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<'all' | 'custom'>('all');
   const [customExercises, setCustomExercises] = useState<{name: string, id: string}[]>([]);
@@ -221,14 +222,54 @@ export function Today() {
     }
   };
 
+  const addExercise = async (newName: string) => {
+    if (!loggedWorkout || !auth.currentUser) return;
+    
+    const staticEx = staticExercises.find(ex => ex.name === newName);
+    const prevStat = previousStats[newName];
+    
+    let defaultSets = 3;
+    let defaultReps = 0;
+    
+    if (staticEx) {
+        if (staticEx.sets) defaultSets = staticEx.sets;
+        if (staticEx.reps) defaultReps = staticEx.reps;
+    }
+    
+    const newSets: LoggedSet[] = [];
+    for (let i = 0; i < defaultSets; i++) {
+        newSets.push({ 
+           reps: defaultReps, 
+           weight: prevStat ? prevStat.weight : 0, 
+           completed: false 
+        });
+    }
+
+    const newExercises = [...(loggedWorkout.exercises || []), { name: newName, sets: newSets }];
+    
+    const wRef = doc(db, `users/${auth.currentUser.uid}/workouts`, loggedWorkout.id!);
+    try {
+      await setDoc(wRef, { exercises: newExercises }, { merge: true });
+      setIsAddingNewExercise(false);
+      setErrorMsg(null);
+    } catch (err) {
+      setErrorMsg('Failed to add exercise. Check your connection.');
+      handleFirestoreError(err, OperationType.WRITE, `users/${auth.currentUser.uid}/workouts`);
+    }
+  };
+
   const createCustomExercise = async () => {
-    if (!newCustomName.trim() || !auth.currentUser || swappingExIndex === null) return;
+    if (!newCustomName.trim() || !auth.currentUser || (swappingExIndex === null && !isAddingNewExercise)) return;
     try {
       await addDoc(collection(db, `users/${auth.currentUser.uid}/custom_exercises`), {
         name: newCustomName.trim()
       });
-      // automatically swap the exercise to this newly created one
-      swapExercise(swappingExIndex, newCustomName.trim());
+      // automatically swap or add the exercise to this newly created one
+      if (isAddingNewExercise) {
+        addExercise(newCustomName.trim());
+      } else if (swappingExIndex !== null) {
+        swapExercise(swappingExIndex, newCustomName.trim());
+      }
       setSwapSearch("");
       setNewCustomName("");
     } catch(err) {
@@ -553,6 +594,16 @@ export function Today() {
             );
           })
         )}
+
+        {loggedWorkout && !loggedWorkout.isCompleted && (
+          <button
+            onClick={() => setIsAddingNewExercise(true)}
+            className="w-full py-6 mt-4 border-[4px] border-black border-dashed flex items-center justify-center gap-2 hover:bg-black/5 transition-colors group"
+          >
+            <Plus className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" />
+            <span className="font-serif text-2xl font-black uppercase">Add Exercise</span>
+          </button>
+        )}
       </section>
 
       {/* Complete Workout Button */}
@@ -578,7 +629,7 @@ export function Today() {
       )}
 
       <AnimatePresence>
-        {swappingExIndex !== null && (
+        {(swappingExIndex !== null || isAddingNewExercise) && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -587,6 +638,7 @@ export function Today() {
           >
             <div className="absolute inset-0" onClick={() => {
               setSwappingExIndex(null);
+              setIsAddingNewExercise(false);
               setSwapSearch("");
             }} />
             
@@ -600,6 +652,7 @@ export function Today() {
               <button 
                 onClick={() => {
                   setSwappingExIndex(null);
+                  setIsAddingNewExercise(false);
                   setSwapSearch("");
                 }}
                 className="absolute top-4 right-4 bg-black/10 p-2 rounded-full hover:bg-black/20"
@@ -607,7 +660,9 @@ export function Today() {
                 <X className="w-5 h-5" />
               </button>
 
-              <h2 className="font-serif text-3xl font-black uppercase mb-6">Swap Exercise</h2>
+              <h2 className="font-serif text-3xl font-black uppercase mb-6">
+                {isAddingNewExercise ? "Add Exercise" : "Swap Exercise"}
+              </h2>
               
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 opacity-50" />
@@ -666,7 +721,11 @@ export function Today() {
                   <button
                     key={e.name}
                     onClick={() => {
-                      swapExercise(swappingExIndex, e.name);
+                      if (isAddingNewExercise) {
+                        addExercise(e.name);
+                      } else if (swappingExIndex !== null) {
+                        swapExercise(swappingExIndex, e.name);
+                      }
                       setSwapSearch("");
                       setFilterStatus('all');
                     }}
